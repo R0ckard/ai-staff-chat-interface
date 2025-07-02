@@ -1,5 +1,5 @@
 // Configuration
-const API_BASE_URL = 'http://localhost:8001';
+const API_BASE_URL = 'https://ai-staff-chief-of-staff.ambitioussea-9ca2abb1.centralus.azurecontainerapps.io';
 
 // DOM Elements
 const messagesContainer = document.getElementById('messagesContainer' );
