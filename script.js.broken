@@ -1,0 +1,295 @@
+// Configuration
+const API_BASE_URL = 'http://localhost:8001';
+
+// DOM Elements
+const messagesContainer = document.getElementById('messagesContainer' );
+const messageInput = document.getElementById('messageInput');
+const sendBtn = document.getElementById('sendBtn');
+const voiceBtn = document.getElementById('voiceBtn');
+const typingIndicator = document.getElementById('typingIndicator');
+const dashboardModal = document.getElementById('dashboardModal');
+
+// State
+let isTyping = false;
+let isRecording = false;
+let mediaRecorder = null;
+let audioChunks = [];
+let microphonePermissionGranted = false;
+let welcomeMessageSent = false; // Prevent duplicate greetings
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    messageInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+    
+    messageInput.addEventListener('input', autoResize);
+    loadDashboard();
+    
+    // Send welcome message only once
+    if (!welcomeMessageSent) {
+        addMessage("Hello! I'm your AI Chief of Staff. I'm here to help you with cost tracking, project management, strategic planning, and operational oversight.\n\nYou can ask me about budget status, project health, team coordination, or any strategic questions you have.", 'assistant');
+        welcomeMessageSent = true;
+    }
+});
+
+// Auto-resize textarea
+function autoResize() {
+    messageInput.style.height = 'auto';
+    messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
+}
+
+// Send message
+async function sendMessage() {
+    const message = messageInput.value.trim();
+    if (!message || isTyping) return;
+    
+    // Add user message
+    addMessage(message, 'user');
+    messageInput.value = '';
+    autoResize();
+    
+    showTyping();
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/chat`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                message: message,
+                conversation_id: 'web-chat-' + Date.now()
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        hideTyping();
+        addMessage(data.response, 'assistant');
+        
+    } catch (error) {
+        hideTyping();
+        addMessage('Sorry, I encountered an error. Please try again.', 'assistant');
+        console.error('Error:', error);
+    }
+}
+
+// Quick message function
+function sendQuickMessage(message) {
+    messageInput.value = message;
+    sendMessage();
+}
+
+// IMPROVED Voice recording functionality
+async function toggleVoice() {
+    if (!isRecording) {
+        // Start recording
+        try {
+            // Request microphone permission with better error handling
+            if (!microphonePermissionGranted) {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        sampleRate: 44100
+                    }
+                });
+                microphonePermissionGranted = true;
+                
+                // Set up MediaRecorder
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm;codecs=opus'
+                });
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    await processVoiceInput(audioBlob);
+                    
+                    // Stop all tracks to release microphone
+                    stream.getTracks().forEach(track => track.stop());
+                };
+            }
+            
+            // Start recording
+            mediaRecorder.start();
+            isRecording = true;
+            
+            // Update UI for recording state
+            voiceBtn.classList.add('recording');
+            voiceBtn.innerHTML = '<i class="fas fa-stop"></i>';
+            voiceBtn.title = 'Click to stop recording';
+            voiceBtn.style.backgroundColor = '#e74c3c';
+            
+            // Add visual feedback
+            addMessage('🎤 Recording... (click microphone to stop)', 'system');
+            
+        } catch (error) {
+            console.error('Error accessing microphone:', error);
+            if (error.name === 'NotAllowedError') {
+                addMessage('❌ Microphone access denied. Please allow microphone access in your browser settings and try again.', 'system', true);
+            } else {
+                addMessage('❌ Unable to access microphone. Please check your browser permissions and try again.', 'system', true);
+            }
+        }
+    } else {
+        // Stop recording
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+        }
+        
+        isRecording = false;
+        voiceBtn.classList.remove('recording');
+        voiceBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+        voiceBtn.title = 'Click to start recording';
+        voiceBtn.style.backgroundColor = '';
+    }
+}
+
+// Process voice input
+async function processVoiceInput(audioBlob) {
+    // Remove the recording message
+    const messages = messagesContainer.children;
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage && lastMessage.textContent.includes('🎤 Recording...')) {
+        lastMessage.remove();
+    }
+    
+    showTyping();
+    
+    try {
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'recording.webm');
+        
+        const response = await fetch(`${API_BASE_URL}/voice/conversation`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        hideTyping();
+        
+        if (data.transcription && data.transcription.trim()) {
+            // Add transcribed message as user message
+            addMessage(`🎤 ${data.transcription}`, 'user');
+            
+            // Add AI response
+            if (data.response) {
+                addMessage(data.response, 'assistant');
+            }
+        } else {
+            addMessage('❌ Could not understand the audio. Please try speaking more clearly.', 'system', true);
+        }
+        
+    } catch (error) {
+        hideTyping();
+        addMessage('❌ Error processing voice input. Please try again.', 'system', true);
+        console.error('Voice processing error:', error);
+    }
+}
+
+// Add message to chat
+function addMessage(message, sender, isError = false) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${sender}`;
+    
+    if (isError) {
+        messageDiv.style.backgroundColor = '#fee';
+        messageDiv.style.borderLeft = '4px solid #e74c3c';
+    }
+    
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    
+    if (sender === 'user') {
+        avatar.textContent = 'You';
+        avatar.style.backgroundColor = '#3498db';
+    } else if (sender === 'assistant') {
+        avatar.textContent = 'CS';
+        avatar.style.backgroundColor = '#2ecc71';
+    } else {
+        avatar.textContent = '⚡';
+        avatar.style.backgroundColor = '#95a5a6';
+    }
+    
+    const content = document.createElement('div');
+    content.className = 'content';
+    content.textContent = message;
+    
+    const timestamp = document.createElement('div');
+    timestamp.className = 'timestamp';
+    timestamp.textContent = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
+    messageDiv.appendChild(avatar);
+    messageDiv.appendChild(content);
+    messageDiv.appendChild(timestamp);
+    
+    messagesContainer.appendChild(messageDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// Typing indicator functions
+function showTyping() {
+    isTyping = true;
+    typingIndicator.style.display = 'flex';
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+function hideTyping() {
+    isTyping = false;
+    typingIndicator.style.display = 'none';
+}
+
+// Dashboard functions
+async function loadDashboard() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/dashboard`);
+        if (response.ok) {
+            const data = await response.json();
+            updateDashboardContent(data);
+        }
+    } catch (error) {
+        console.error('Dashboard load error:', error);
+    }
+}
+
+function updateDashboardContent(data) {
+    // Dashboard update logic here
+}
+
+function openDashboard() {
+    dashboardModal.style.display = 'block';
+    loadDashboard();
+}
+
+function closeDashboard() {
+    dashboardModal.style.display = 'none';
+}
+
+// Event listeners
+sendBtn.addEventListener('click', sendMessage);
+voiceBtn.addEventListener('click', toggleVoice);
+
+// Close dashboard when clicking outside
+window.addEventListener('click', function(event) {
+    if (event.target === dashboardModal) {
+        closeDashboard();
+    }
+});

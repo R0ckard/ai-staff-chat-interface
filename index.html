@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chief of Staff - AI Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="chat-container">
+        <!-- Header -->
+        <div class="chat-header">
+            <div class="header-content">
+                <div class="avatar-container">
+                    <div class="avatar">
+                        <i class="fas fa-user-tie"></i>
+                    </div>
+                    <div class="status-indicator online"></div>
+                </div>
+                <div class="header-info">
+                    <h1>Chief of Staff</h1>
+                    <p class="status">AI Assistant • Online</p>
+                </div>
+                <div class="header-actions">
+                    <button class="action-btn" onclick="showDashboard( )">
+                        <i class="fas fa-chart-line"></i>
+                    </button>
+                    <button class="action-btn" onclick="showSettings()">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+            <button class="quick-btn" onclick="sendQuickMessage('What is my current budget status?')">
+                <i class="fas fa-dollar-sign"></i>
+                Budget Status
+            </button>
+            <button class="quick-btn" onclick="sendQuickMessage('Give me a project health update')">
+                <i class="fas fa-tasks"></i>
+                Project Health
+            </button>
+            <button class="quick-btn" onclick="sendQuickMessage('What are the top priorities today?')">
+                <i class="fas fa-star"></i>
+                Priorities
+            </button>
+            <button class="quick-btn" onclick="sendQuickMessage('Any urgent items requiring attention?')">
+                <i class="fas fa-exclamation-triangle"></i>
+                Urgent Items
+            </button>
+        </div>
+
+        <!-- Messages Container -->
+        <div class="messages-container" id="messagesContainer">
+            <div class="welcome-message">
+                <div class="avatar">
+                    <i class="fas fa-user-tie"></i>
+                </div>
+                <div class="message-content">
+                    <p>Hello! I'm your AI Chief of Staff. I'm here to help you with cost tracking, project management, strategic planning, and operational oversight.</p>
+                    <p>You can ask me about budget status, project health, team coordination, or any strategic questions you have.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Typing Indicator -->
+        <div class="typing-indicator" id="typingIndicator" style="display: none;">
+            <div class="avatar">
+                <i class="fas fa-user-tie"></i>
+            </div>
+            <div class="typing-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-container">
+            <div class="input-wrapper">
+                <button class="attachment-btn" onclick="toggleVoice()">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                <input type="text" id="messageInput" placeholder="Message your Chief of Staff..." onkeypress="handleKeyPress(event)">
+                <button class="send-btn" onclick="sendMessage()" id="sendBtn">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Modal -->
+    <div class="modal" id="dashboardModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Dashboard</h2>
+                <button class="close-btn" onclick="closeDashboard()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="dashboardContent">
+                Loading dashboard...
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js?v=1750110638"></script>
+</body>
+</html>
