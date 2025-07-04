@@ -97,8 +97,8 @@ async function sendMessage() {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                message: message,
-                context: {}
+                message: message
+                
             })
         });
         
