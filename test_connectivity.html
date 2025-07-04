@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Connectivity Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test { margin: 10px 0; padding: 10px; border: 1px solid #ccc; }
+        .success { background-color: #d4edda; }
+        .error { background-color: #f8d7da; }
+    </style>
+</head>
+<body>
+    <h1>Static Web Apps Connectivity Test</h1>
+    <div id="results"></div>
+    
+    <script>
+        const results = document.getElementById('results');
+        
+        async function testConnection(name, url, options = {}) {
+            const div = document.createElement('div');
+            div.className = 'test';
+            div.innerHTML = `<strong>${name}</strong>: Testing...`;
+            results.appendChild(div);
+            
+            try {
+                const response = await fetch(url, options);
+                div.innerHTML = `<strong>${name}</strong>: ✅ SUCCESS - Status: ${response.status}`;
+                div.className = 'test success';
+            } catch (error) {
+                div.innerHTML = `<strong>${name}</strong>: ❌ FAILED - ${error.message}`;
+                div.className = 'test error';
+            }
+        }
+        
+        // Test external APIs
+        testConnection('External API (GET)', 'https://httpbin.org/get' );
+        testConnection('External API (POST)', 'https://httpbin.org/post', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ test: 'data' } )
+        });
+        
+        // Test our Container App
+        testConnection('Container App Health', 'https://ai-staff-chief-of-staff.ambitioussea-9ca2abb1.centralus.azurecontainerapps.io/health' );
+        testConnection('Container App Chat', 'https://ai-staff-chief-of-staff.ambitioussea-9ca2abb1.centralus.azurecontainerapps.io/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: 'test' } )
+        });
+    </script>
+</body>
+</html>
