@@ -1,40 +1,80 @@
 // Configuration
-const API_BASE_URL = 'https://ai-staff-test-hello-world.ambitioussea-9ca2abb1.centralus.azurecontainerapps.io';
+const API_BASE_URL = 'https://ai-staff-chief-of-staff.ambitioussea-9ca2abb1.centralus.azurecontainerapps.io';
 
-// DOM Elements
-const messagesContainer = document.getElementById('messagesContainer' );
-const messageInput = document.getElementById('messageInput');
-const sendBtn = document.getElementById('sendBtn');
-const voiceBtn = document.getElementById('voiceBtn');
-const typingIndicator = document.getElementById('typingIndicator');
-const dashboardModal = document.getElementById('dashboardModal');
+// DOM elements
+const chatMessages = document.getElementById('chat-messages' );
+const messageInput = document.getElementById('message-input');
+const sendButton = document.getElementById('send-button');
+const voiceButton = document.getElementById('voice-button');
+const settingsButton = document.getElementById('settings-button');
+const dashboardModal = document.getElementById('dashboard-modal');
+const settingsModal = document.getElementById('settings-modal');
 
 // State
-let isTyping = false;
 let isRecording = false;
-let mediaRecorder = null;
+let mediaRecorder;
 let audioChunks = [];
 
-// Initialize
+// Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
+    loadDashboard();
+    setupEventListeners();
+    addMessage('Hello! I\'m your AI Chief of Staff. I\'m here to help you with cost tracking, project management, strategic planning, and operational oversight.\n\nYou can ask me about budget status, project health, team coordination, or any strategic questions you have.', 'assistant');
+});
+
+// Event listeners
+function setupEventListeners() {
+    sendButton.addEventListener('click', sendMessage);
     messageInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
+        if (e.key === 'Enter') {
             sendMessage();
         }
     });
     
-    messageInput.addEventListener('input', autoResize);
-    loadDashboard();
+    voiceButton.addEventListener('click', toggleVoiceRecording);
+    settingsButton.addEventListener('click', showSettings);
     
-    // Add welcome message
-    addMessage("Hello! I'm your AI Chief of Staff. I'm here to help you with cost tracking, project management, strategic planning, and operational oversight.\n\nYou can ask me about budget status, project health, team coordination, or any strategic questions you have.", 'assistant');
-});
+    // Close modals when clicking outside
+    window.onclick = function(event) {
+        if (event.target === dashboardModal) {
+            closeDashboard();
+        }
+        if (event.target === settingsModal) {
+            closeSettings();
+        }
+    }
+}
 
-// Auto-resize textarea
-function autoResize() {
-    messageInput.style.height = 'auto';
-    messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
+// Load dashboard data on startup
+async function loadDashboard() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/dashboard`);
+        const data = await response.json();
+        
+        // Update dashboard content
+        dashboardContent.innerHTML = `<p style="color: #2c3e50;">Dashboard data not available yet.</p>`;
+        
+    } catch (error) {
+        console.log('Dashboard data not available yet.');
+        dashboardContent.innerHTML = `<p style="color: #2c3e50;">Dashboard data not available yet.</p>`;
+    }
+}
+
+// Show settings (placeholder)
+function showSettings() {
+    addMessage('⚙️ Settings panel coming soon! This feature will allow you to customize your AI assistant preferences.', 'system');
+}
+
+// Close dashboard
+function closeDashboard() {
+    dashboardModal.style.display = 'none';
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    if (event.target === dashboardModal) {
+        closeDashboard();
+    }
 }
 
 // Send message
@@ -75,279 +115,172 @@ async function sendMessage() {
         addMessage(data.response, 'assistant');
         
     } catch (error) {
+        // Hide typing indicator
         hideTyping();
-        addMessage('I apologize, but I encountered an error connecting to the AI service. Please ensure the Chief of Staff API is running on port 8001.', 'assistant', true);
+        
+        // Show error message
+        addMessage('I apologize, but I encountered an error connecting to the AI service. Please ensure the Chief of Staff API is running on port 8001.', 'assistant');
         console.error('Error:', error);
     }
 }
 
-// Send quick message
-function sendQuickMessage(message) {
-    messageInput.value = message;
-    sendMessage();
-}
-
-// Voice recording functionality - FIXED VERSION
-async function toggleVoice() {
+// Voice recording functionality
+function toggleVoiceRecording() {
     if (!isRecording) {
-        try {
-            // Request microphone permission
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    sampleRate: 44100
-                } 
-            });
-            
-            microphonePermissionGranted = true;
-            mediaRecorder = new MediaRecorder(stream, {
-                mimeType: 'audio/webm;codecs=opus'
-            });
-            audioChunks = [];
-            
-            mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    audioChunks.push(event.data);
-                }
-            };
-            
-            mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                await processVoiceInput(audioBlob);
-                
-                // Stop all tracks to release microphone
-                stream.getTracks().forEach(track => track.stop());
-            };
-            
-            mediaRecorder.start();
-            isRecording = true;
-            voiceBtn.classList.add('recording');
-            voiceBtn.innerHTML = '<i class="fas fa-stop"></i>';
-            voiceBtn.title = 'Stop Recording';
-            voiceBtn.style.backgroundColor = '#e74c3c';
-            
-            // Add visual feedback
-            addMessage("🎤 Recording... (release to send)", 'system');
-            
-        } catch (error) {
-            console.error('Error accessing microphone:', error);
-            if (error.name === 'NotAllowedError') {
-                addMessage('❌ Microphone access denied. Please allow microphone access in your browser settings and try again.', 'system', true);
-            } else {
-                addMessage('❌ Unable to access microphone. Please check your browser permissions and try again.', 'system', true);
-            }
-        }
+        startRecording();
     } else {
-        if (mediaRecorder && mediaRecorder.state === 'recording') {
-            mediaRecorder.stop();
-        }
-        isRecording = false;
-        voiceBtn.classList.remove('recording');
-        voiceBtn.innerHTML = '<i class="fas fa-microphone"></i>';
-        voiceBtn.title = 'Voice Input';
-        voiceBtn.style.backgroundColor = '';
+        stopRecording();
     }
 }
 
-// Process voice input
-async function processVoiceInput(audioBlob) {
-    // Remove the recording message
-    const messages = messagesContainer.children;
-    const lastMessage = messages[messages.length - 1];
-    if (lastMessage && lastMessage.textContent.includes('🎤 Recording...')) {
-        lastMessage.remove();
+async function startRecording() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        
+        mediaRecorder.ondataavailable = event => {
+            audioChunks.push(event.data);
+        };
+        
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            await sendVoiceMessage(audioBlob);
+        };
+        
+        mediaRecorder.start();
+        isRecording = true;
+        voiceButton.innerHTML = '⏹️';
+        voiceButton.style.backgroundColor = '#e74c3c';
+        
+        addMessage('🎤 Recording... Click the stop button when finished.', 'system');
+        
+    } catch (error) {
+        addMessage('❌ I had trouble processing your voice input. The voice feature is in demo mode. Please try typing your message instead.', 'system');
+        console.error('Error accessing microphone:', error);
     }
-    
-    showTyping();
-    
+}
+
+function stopRecording() {
+    if (mediaRecorder && isRecording) {
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        isRecording = false;
+        voiceButton.innerHTML = '🎤';
+        voiceButton.style.backgroundColor = '#3498db';
+    }
+}
+
+async function sendVoiceMessage(audioBlob) {
     try {
         const formData = new FormData();
         formData.append('audio', audioBlob, 'recording.webm');
+        
+        showTyping();
         
         const response = await fetch(`${API_BASE_URL}/voice/conversation`, {
             method: 'POST',
             body: formData
         });
         
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
         hideTyping();
         
-        // Add user message (transcribed)
-        addMessage(`🎤 ${data.user_text}`, 'user');
-        
-        // Add assistant response
-        addMessage(data.ai_response, 'assistant');
+        if (response.ok) {
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('audio')) {
+                // Handle audio response
+                const audioBlob = await response.blob();
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audio = new Audio(audioUrl);
+                audio.play();
+                addMessage('🔊 Playing voice response...', 'assistant');
+            } else {
+                // Handle JSON response
+                const data = await response.json();
+                addMessage(data.ai_response || 'Voice response received', 'assistant');
+            }
+        } else {
+            throw new Error('Voice processing failed');
+        }
         
     } catch (error) {
         hideTyping();
-        addMessage('❌ I had trouble processing your voice input. The voice feature is in demo mode. Please try typing your message instead.', 'assistant', true);
-        console.error('Voice processing error:', error);
+        addMessage('❌ I had trouble processing your voice input. The voice feature is in demo mode. Please try typing your message instead.', 'system');
+        console.error('Voice error:', error);
     }
 }
 
 // Add message to chat
-function addMessage(content, sender, isError = false) {
+function addMessage(text, sender) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${sender}`;
     
     const avatar = document.createElement('div');
-    avatar.className = 'message-avatar';
+    avatar.className = 'avatar';
     
     if (sender === 'user') {
         avatar.textContent = 'You';
-    } else if (sender === 'system') {
-        avatar.textContent = '🔧';
-        avatar.style.backgroundColor = '#95a5a6';
-    } else {
+        avatar.style.backgroundColor = '#3498db';
+    } else if (sender === 'assistant') {
         avatar.textContent = 'CS';
+        avatar.style.backgroundColor = '#2ecc71';
+    } else {
+        avatar.textContent = '⚡';
+        avatar.style.backgroundColor = '#f39c12';
     }
     
-    const messageContent = document.createElement('div');
-    messageContent.className = 'message-content';
+    const content = document.createElement('div');
+    content.className = 'message-content';
+    content.textContent = text;
     
-    if (isError) {
-        messageContent.style.background = '#e74c3c';
-        messageContent.style.color = 'white';
-    } else if (sender === 'system') {
-        messageContent.style.background = '#ecf0f1';
-        messageContent.style.color = '#2c3e50';
-    }
-    
-    const messageText = document.createElement('p');
-    messageText.style.whiteSpace = 'pre-wrap'; // Preserve line breaks
-    messageText.textContent = content;
-    messageContent.appendChild(messageText);
-    
-    const messageTime = document.createElement('div');
-    messageTime.className = 'message-time';
-    messageTime.textContent = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-    messageContent.appendChild(messageTime);
+    const timestamp = document.createElement('div');
+    timestamp.className = 'timestamp';
+    timestamp.textContent = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     
     messageDiv.appendChild(avatar);
-    messageDiv.appendChild(messageContent);
+    messageDiv.appendChild(content);
+    messageDiv.appendChild(timestamp);
     
-    messagesContainer.appendChild(messageDiv);
-    scrollToBottom();
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-// Show typing indicator
+// Typing indicator
+let isTyping = false;
+let typingElement;
+
 function showTyping() {
-    isTyping = true;
-    typingIndicator.style.display = 'flex';
-    sendBtn.disabled = true;
-    scrollToBottom();
-}
-
-// Hide typing indicator
-function hideTyping() {
-    isTyping = false;
-    typingIndicator.style.display = 'none';
-    sendBtn.disabled = false;
-}
-
-// Scroll to bottom of messages
-function scrollToBottom() {
-    setTimeout(() => {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    }, 100);
-}
-
-// Show dashboard
-async function showDashboard() {
-    dashboardModal.style.display = 'flex';
-    const dashboardContent = document.getElementById('dashboardContent');
+    if (isTyping) return;
     
-    try {
-        const response = await fetch(`${API_BASE_URL}/dashboard`);
-        const data = await response.json();
-        
-        dashboardContent.innerHTML = `
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
-                    <h3 style="color: #2c3e50; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
-                        <i class="fas fa-dollar-sign" style="color: #27ae60;"></i>
-                        Cost Tracking
-                    </h3>
-                    <p><strong>Monthly Spend:</strong> $${data.cost_tracking.total_monthly_spend.toLocaleString()}</p>
-                    <p><strong>Budget:</strong> $${data.cost_tracking.monthly_budget.toLocaleString()}</p>
-                    <p><strong>Utilization:</strong> ${(data.cost_tracking.budget_utilization * 100).toFixed(1)}%</p>
-                    <p><strong>Status:</strong> <span style="color: #27ae60; text-transform: capitalize;">${data.cost_tracking.status.replace('_', ' ')}</span></p>
-                </div>
-                
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
-                    <h3 style="color: #2c3e50; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
-                        <i class="fas fa-tasks" style="color: #3498db;"></i>
-                        Project Health
-                    </h3>
-                    <p><strong>Total Projects:</strong> ${data.project_health.total_projects}</p>
-                    <p><strong>On Track:</strong> <span style="color: #27ae60;">${data.project_health.projects_on_track}</span></p>
-                    <p><strong>At Risk:</strong> <span style="color: #e74c3c;">${data.project_health.projects_at_risk}</span></p>
-                    <p><strong>Health Score:</strong> ${(data.project_health.average_health_score * 100).toFixed(1)}%</p>
-                </div>
+    isTyping = true;
+    typingElement = document.createElement('div');
+    typingElement.className = 'message assistant typing';
+    typingElement.innerHTML = `
+        <div class="avatar" style="background-color: #2ecc71;">CS</div>
+        <div class="message-content">
+            <div class="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
             </div>
-            
-            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
-                <h3 style="color: #2c3e50; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-chart-line" style="color: #9b59b6;"></i>
-                    Top Cost Categories
-                </h3>
-                ${data.cost_tracking.top_categories.map(cat => `
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px; padding: 10px; background: white; border-radius: 5px;">
-                        <span>${cat.category}</span>
-                        <strong>$${cat.amount.toLocaleString()}</strong>
-                    </div>
-                `).join('')}
-            </div>
-            
-            <div style="margin-top: 20px; padding: 15px; background: #e8f5e8; border-radius: 10px; border-left: 4px solid #27ae60;">
-                <p style="margin: 0; color: #2c3e50;"><strong>AI Status:</strong> ${data.ai_status.enabled ? 'Fully Operational' : 'Demo Mode'} • Model: ${data.ai_status.model || 'Demo'}</p>
-                <p style="margin: 5px 0 0 0; color: #2c3e50;"><strong>Voice Status:</strong> ${data.voice_status.whisper_available ? 'Speech-to-Text Ready' : 'Demo Mode'} • ${data.voice_status.elevenlabs_available ? 'Text-to-Speech Ready' : 'Text-to-Speech Pending Setup'}</p>
-            </div>
-        `;
-        
-    } catch (error) {
-        dashboardContent.innerHTML = '<p style="color: #e74c3c;">Error loading dashboard data. Please ensure the Chief of Staff API is running.</p>';
+        </div>
+    `;
+    
+    chatMessages.appendChild(typingElement);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function hideTyping() {
+    if (isTyping && typingElement) {
+        typingElement.remove();
+        isTyping = false;
     }
 }
 
-// Close dashboard
-function closeDashboard() {
-    dashboardModal.style.display = 'none';
+// Auto-resize textarea
+function autoResize() {
+    messageInput.style.height = 'auto';
+    messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
 }
 
-// Load dashboard data on startup
-async function loadDashboard() {
-    try {
-        await fetch(`${API_BASE_URL}/dashboard`);
-    } catch (error) {
-        console.log('Dashboard data not available yet');
-    }
-}
-
-// Show settings (placeholder)
-function showSettings() {
-    addMessage('⚙️ Settings panel coming soon! This will include voice settings, theme options, and notification preferences.', 'system');
-}
-
-// Close modal when clicking outside
-window.onclick = function(event) {
-    if (event.target === dashboardModal) {
-        closeDashboard();
-    }
-}
-
-// Handle connection status
-window.addEventListener('online', function() {
-    console.log('Connection restored');
-});
-
-window.addEventListener('offline', function() {
-    console.log('Connection lost');
-    addMessage('❌ Connection lost. Messages will be sent when connection is restored.', 'system', true);
-});
+messageInput.addEventListener('input', autoResize);
