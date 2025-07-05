@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Chat Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        input { width: 300px; padding: 10px; }
+        button { padding: 10px 20px; }
+        #result { margin: 20px 0; padding: 10px; border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <h1>Simple Chat Test</h1>
+    <input type="text" id="messageInput" placeholder="Type a message..." value="Hello">
+    <button onclick="testChat()">Send Message</button>
+    <div id="result"></div>
+    
+    <script>
+        async function testChat() {
+            const message = document.getElementById('messageInput').value;
+            const result = document.getElementById('result');
+            
+            result.innerHTML = 'Sending...';
+            
+            try {
+                const response = await fetch('https://ai-staff-chief-of-staff.ambitioussea-9ca2abb1.centralus.azurecontainerapps.io/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message } )
+                });
+                
+                result.innerHTML = `✅ SUCCESS - Status: ${response.status}`;
+                result.style.backgroundColor = '#d4edda';
+            } catch (error) {
+                result.innerHTML = `❌ FAILED - ${error.message}`;
+                result.style.backgroundColor = '#f8d7da';
+            }
+        }
+    </script>
+</body>
+</html>
