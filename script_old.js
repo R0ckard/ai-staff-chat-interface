@@ -45,7 +45,39 @@ function setupEventListeners() {
     }
 }
 
-// Send message - SIMPLIFIED VERSION
+// Load dashboard data on startup
+async function loadDashboard() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/dashboard`);
+        const data = await response.json();
+        
+        // Update dashboard content
+        dashboardContent.innerHTML = `<p style="color: #2c3e50;">Dashboard data not available yet.</p>`;
+        
+    } catch (error) {
+        console.log('Dashboard data not available yet.');
+        dashboardContent.innerHTML = `<p style="color: #2c3e50;">Dashboard data not available yet.</p>`;
+    }
+}
+
+// Show settings (placeholder)
+function showSettings() {
+    addMessage('⚙️ Settings panel coming soon! This feature will allow you to customize your AI assistant preferences.', 'system');
+}
+
+// Close dashboard
+function closeDashboard() {
+    dashboardModal.style.display = 'none';
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    if (event.target === dashboardModal) {
+        closeDashboard();
+    }
+}
+
+// Send message
 async function sendMessage() {
     const message = messageInput.value.trim();
     if (!message || isTyping) return;
@@ -66,73 +98,87 @@ async function sendMessage() {
             },
             body: JSON.stringify({
                 message: message
+                
             })
         });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
         
         // Hide typing indicator
         hideTyping();
         
-        if (response.ok) {
-            // Try to get JSON response, but handle gracefully if it fails
-            try {
-                const data = await response.json();
-                addMessage(data.response || 'Response received successfully', 'assistant');
-            } catch (jsonError) {
-                addMessage('Message sent successfully (response format issue)', 'assistant');
-            }
-        } else {
-            addMessage('I apologize, but I encountered an error. Please try again.', 'assistant');
-        }
+        // Add assistant response
+        addMessage(data.response, 'assistant');
         
     } catch (error) {
         // Hide typing indicator
         hideTyping();
+        
+        // Show error message
         addMessage('I apologize, but I encountered an error connecting to the AI service. Please ensure the Chief of Staff API is running on port 8001.', 'assistant');
+        console.error('Error:', error);
     }
 }
 
 // Voice recording functionality
-async function toggleVoiceRecording() {
+function toggleVoiceRecording() {
     if (!isRecording) {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
-            
-            mediaRecorder.ondataavailable = function(event) {
-                audioChunks.push(event.data);
-            };
-            
-            mediaRecorder.onstop = function() {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                sendVoiceMessage(audioBlob);
-                stream.getTracks().forEach(track => track.stop());
-            };
-            
-            mediaRecorder.start();
-            isRecording = true;
-            voiceButton.textContent = '🔴';
-            voiceButton.title = 'Stop recording';
-            
-        } catch (error) {
-            addMessage('❌ I had trouble processing your voice input. The voice feature is in demo mode. Please try typing your message instead.', 'assistant');
-        }
+        startRecording();
     } else {
+        stopRecording();
+    }
+}
+
+async function startRecording() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        
+        mediaRecorder.ondataavailable = event => {
+            audioChunks.push(event.data);
+        };
+        
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            await sendVoiceMessage(audioBlob);
+        };
+        
+        mediaRecorder.start();
+        isRecording = true;
+        voiceButton.innerHTML = '⏹️';
+        voiceButton.style.backgroundColor = '#e74c3c';
+        
+        addMessage('🎤 Recording... Click the stop button when finished.', 'system');
+        
+    } catch (error) {
+        addMessage('❌ I had trouble processing your voice input. The voice feature is in demo mode. Please try typing your message instead.', 'system');
+        console.error('Error accessing microphone:', error);
+    }
+}
+
+function stopRecording() {
+    if (mediaRecorder && isRecording) {
         mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach(track => track.stop());
         isRecording = false;
-        voiceButton.textContent = '🎤';
-        voiceButton.title = 'Voice input';
+        voiceButton.innerHTML = '🎤';
+        voiceButton.style.backgroundColor = '#3498db';
     }
 }
 
 async function sendVoiceMessage(audioBlob) {
-    const formData = new FormData();
-    formData.append('audio', audioBlob, 'voice_input.wav');
-    
-    showTyping();
-    
     try {
-        const response = await fetch(`${API_BASE_URL}/voice`, {
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'recording.webm');
+        
+        showTyping();
+        
+        const response = await fetch(`${API_BASE_URL}/voice/conversation`, {
             method: 'POST',
             body: formData
         });
@@ -140,49 +186,27 @@ async function sendVoiceMessage(audioBlob) {
         hideTyping();
         
         if (response.ok) {
-            const data = await response.json();
-            if (data.user_text) {
-                addMessage(data.user_text, 'user');
-            }
-            if (data.ai_response) {
-                addMessage(data.ai_response, 'assistant');
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('audio')) {
+                // Handle audio response
+                const audioBlob = await response.blob();
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audio = new Audio(audioUrl);
+                audio.play();
+                addMessage('🔊 Playing voice response...', 'assistant');
+            } else {
+                // Handle JSON response
+                const data = await response.json();
+                addMessage(data.ai_response || 'Voice response received', 'assistant');
             }
         } else {
-            addMessage('❌ I had trouble processing your voice input. The voice feature is in demo mode. Please try typing your message instead.', 'assistant');
+            throw new Error('Voice processing failed');
         }
         
     } catch (error) {
         hideTyping();
-        addMessage('❌ I had trouble processing your voice input. The voice feature is in demo mode. Please try typing your message instead.', 'assistant');
-    }
-}
-
-// Dashboard functionality
-async function loadDashboard() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/dashboard`);
-        if (response.ok) {
-            const data = await response.json();
-            // Dashboard loaded successfully (no UI update needed for now)
-        }
-    } catch (error) {
-        // Dashboard loading failed (silent failure)
-    }
-}
-
-function showSettings() {
-    addMessage('⚙️ Settings panel coming soon! This feature will allow you to customize your Chief of Staff experience.', 'assistant');
-}
-
-function closeDashboard() {
-    if (dashboardModal) {
-        dashboardModal.style.display = 'none';
-    }
-}
-
-function closeSettings() {
-    if (settingsModal) {
-        settingsModal.style.display = 'none';
+        addMessage('❌ I had trouble processing your voice input. The voice feature is in demo mode. Please try typing your message instead.', 'system');
+        console.error('Voice error:', error);
     }
 }
 
@@ -193,8 +217,17 @@ function addMessage(text, sender) {
     
     const avatar = document.createElement('div');
     avatar.className = 'avatar';
-    avatar.textContent = sender === 'user' ? 'You' : 'CS';
-    avatar.style.backgroundColor = sender === 'user' ? '#007bff' : '#2ecc71';
+    
+    if (sender === 'user') {
+        avatar.textContent = 'You';
+        avatar.style.backgroundColor = '#3498db';
+    } else if (sender === 'assistant') {
+        avatar.textContent = 'CS';
+        avatar.style.backgroundColor = '#2ecc71';
+    } else {
+        avatar.textContent = '⚡';
+        avatar.style.backgroundColor = '#f39c12';
+    }
     
     const content = document.createElement('div');
     content.className = 'message-content';
