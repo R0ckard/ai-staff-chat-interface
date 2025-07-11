@@ -30,10 +30,10 @@ function setupEventListeners() {
             sendMessage();
         }
     });
-    
+
     voiceButton.addEventListener('click', toggleVoiceRecording);
     settingsButton.addEventListener('click', showSettings);
-    
+
     // Close modals when clicking outside
     window.onclick = function(event) {
         if (event.target === dashboardModal) {
@@ -45,20 +45,21 @@ function setupEventListeners() {
     }
 }
 
-// Send message - SIMPLIFIED VERSION
+// Send message - FIXED VERSION WITH ROBUST RESPONSE HANDLING
 async function sendMessage() {
     const message = messageInput.value.trim();
     if (!message || isTyping) return;
-    
+
     // Add user message
     addMessage(message, 'user');
     messageInput.value = '';
     autoResize();
-    
+
     // Show typing indicator
     showTyping();
-    
+
     try {
+        console.log('Sending request to:', `${API_BASE_URL}/chat`);
         const response = await fetch(`${API_BASE_URL}/chat`, {
             method: 'POST',
             headers: {
@@ -68,26 +69,70 @@ async function sendMessage() {
                 message: message
             })
         });
-        
+
+        console.log('Response status:', response.status, response.statusText);
+
         // Hide typing indicator
         hideTyping();
-        
+
         if (response.ok) {
-            // Try to get JSON response, but handle gracefully if it fails
+            // FIXED: Robust response handling for multiple formats
+            let responseText;
+            const contentType = response.headers.get('content-type');
+            
             try {
-                const data = await response.json();
-                addMessage(data.response || 'Response received successfully', 'assistant');
-            } catch (jsonError) {
-                addMessage('Message sent successfully (response format issue)', 'assistant');
+                if (contentType && contentType.includes('application/json')) {
+                    // Try JSON parsing first
+                    const data = await response.json();
+                    console.log('JSON response received:', data);
+                    
+                    // Handle multiple possible JSON structures
+                    if (typeof data === 'string') {
+                        responseText = data;
+                    } else if (data.response) {
+                        responseText = data.response;
+                    } else if (data.message) {
+                        responseText = data.message;
+                    } else if (data.content) {
+                        responseText = data.content;
+                    } else {
+                        // If JSON but unknown structure, stringify it
+                        responseText = JSON.stringify(data);
+                    }
+                } else {
+                    // If not JSON, treat as plain text
+                    responseText = await response.text();
+                    console.log('Text response received:', responseText.substring(0, 100) + '...');
+                }
+            } catch (parseError) {
+                console.log('JSON parsing failed, trying text:', parseError);
+                // If JSON parsing fails, try as plain text
+                try {
+                    responseText = await response.text();
+                    console.log('Fallback text response:', responseText.substring(0, 100) + '...');
+                } catch (textError) {
+                    console.error('Both JSON and text parsing failed:', textError);
+                    responseText = 'Response received but could not be processed. Please try again.';
+                }
             }
+
+            // Ensure we have a valid response
+            if (!responseText || responseText.trim() === '') {
+                responseText = 'Response received successfully, but content was empty.';
+            }
+
+            addMessage(responseText, 'assistant');
+            
         } else {
-            addMessage('I apologize, but I encountered an error. Please try again.', 'assistant');
+            console.error('HTTP error:', response.status, response.statusText);
+            addMessage(`I apologize, but I encountered an error (${response.status}). Please try again.`, 'assistant');
         }
-        
+
     } catch (error) {
+        console.error('Network or other error:', error);
         // Hide typing indicator
         hideTyping();
-        addMessage('I apologize, but I encountered an error connecting to the AI service. Please ensure the Chief of Staff API is running on port 8001.', 'assistant');
+        addMessage('I apologize, but I encountered an error connecting to the AI service. Please ensure the Chief of Staff API is running and accessible.', 'assistant');
     }
 }
 
@@ -98,107 +143,72 @@ async function toggleVoiceRecording() {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
             audioChunks = [];
-            
-            mediaRecorder.ondataavailable = function(event) {
+
+            mediaRecorder.ondataavailable = event => {
                 audioChunks.push(event.data);
             };
-            
-            mediaRecorder.onstop = function() {
+
+            mediaRecorder.onstop = async () => {
                 const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                sendVoiceMessage(audioBlob);
+                await sendVoiceMessage(audioBlob);
                 stream.getTracks().forEach(track => track.stop());
             };
-            
+
             mediaRecorder.start();
             isRecording = true;
             voiceButton.textContent = '🔴';
-            voiceButton.title = 'Stop recording';
-            
+            voiceButton.title = 'Stop Recording';
         } catch (error) {
-            addMessage('❌ I had trouble processing your voice input. The voice feature is in demo mode. Please try typing your message instead.', 'assistant');
+            console.error('Error accessing microphone:', error);
+            addMessage('Unable to access microphone. Please check your permissions.', 'assistant');
         }
     } else {
         mediaRecorder.stop();
         isRecording = false;
         voiceButton.textContent = '🎤';
-        voiceButton.title = 'Voice input';
+        voiceButton.title = 'Voice Input';
     }
 }
 
 async function sendVoiceMessage(audioBlob) {
-    const formData = new FormData();
-    formData.append('audio', audioBlob, 'voice_input.wav');
-    
     showTyping();
-    
+
     try {
-        const response = await fetch(`${API_BASE_URL}/voice`, {
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'recording.wav');
+
+        const response = await fetch(`${API_BASE_URL}/voice/conversation`, {
             method: 'POST',
             body: formData
         });
-        
+
         hideTyping();
-        
+
         if (response.ok) {
             const data = await response.json();
-            if (data.user_text) {
-                addMessage(data.user_text, 'user');
-            }
-            if (data.ai_response) {
-                addMessage(data.ai_response, 'assistant');
-            }
+            addMessage(data.transcription, 'user');
+            addMessage(data.response, 'assistant');
         } else {
-            addMessage('❌ I had trouble processing your voice input. The voice feature is in demo mode. Please try typing your message instead.', 'assistant');
+            addMessage('I apologize, but I encountered an error processing your voice message.', 'assistant');
         }
-        
     } catch (error) {
         hideTyping();
-        addMessage('❌ I had trouble processing your voice input. The voice feature is in demo mode. Please try typing your message instead.', 'assistant');
+        addMessage('I apologize, but I encountered an error with voice processing.', 'assistant');
     }
 }
 
-// Dashboard functionality
-async function loadDashboard() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/dashboard`);
-        if (response.ok) {
-            const data = await response.json();
-            // Dashboard loaded successfully (no UI update needed for now)
-        }
-    } catch (error) {
-        // Dashboard loading failed (silent failure)
-    }
-}
-
-function showSettings() {
-    addMessage('⚙️ Settings panel coming soon! This feature will allow you to customize your Chief of Staff experience.', 'assistant');
-}
-
-function closeDashboard() {
-    if (dashboardModal) {
-        dashboardModal.style.display = 'none';
-    }
-}
-
-function closeSettings() {
-    if (settingsModal) {
-        settingsModal.style.display = 'none';
-    }
-}
-
-// Add message to chat
-function addMessage(text, sender) {
+// Message display functions
+function addMessage(message, sender) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${sender}`;
     
     const avatar = document.createElement('div');
     avatar.className = 'avatar';
     avatar.textContent = sender === 'user' ? 'You' : 'CS';
-    avatar.style.backgroundColor = sender === 'user' ? '#007bff' : '#2ecc71';
     
     const content = document.createElement('div');
     content.className = 'message-content';
-    content.textContent = text;
+    content.textContent = message;
     
     const timestamp = document.createElement('div');
     timestamp.className = 'timestamp';
@@ -212,42 +222,71 @@ function addMessage(text, sender) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-// Typing indicator
 let isTyping = false;
-let typingElement;
 
 function showTyping() {
     if (isTyping) return;
-    
     isTyping = true;
-    typingElement = document.createElement('div');
-    typingElement.className = 'message assistant typing';
-    typingElement.innerHTML = `
-        <div class="avatar" style="background-color: #2ecc71;">CS</div>
-        <div class="message-content">
-            <div class="typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
-            </div>
-        </div>
-    `;
     
-    chatMessages.appendChild(typingElement);
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'message assistant typing-indicator';
+    typingDiv.id = 'typing-indicator';
+    
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = 'CS';
+    
+    const content = document.createElement('div');
+    content.className = 'message-content';
+    content.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+    
+    typingDiv.appendChild(avatar);
+    typingDiv.appendChild(content);
+    
+    chatMessages.appendChild(typingDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 function hideTyping() {
-    if (isTyping && typingElement) {
-        typingElement.remove();
-        isTyping = false;
+    isTyping = false;
+    const typingIndicator = document.getElementById('typing-indicator');
+    if (typingIndicator) {
+        typingIndicator.remove();
     }
 }
 
-// Auto-resize textarea
 function autoResize() {
     messageInput.style.height = 'auto';
-    messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
+    messageInput.style.height = messageInput.scrollHeight + 'px';
 }
 
-messageInput.addEventListener('input', autoResize);
+// Dashboard functions
+function showDashboard() {
+    dashboardModal.style.display = 'block';
+}
+
+// Close dashboard
+function closeDashboard() {
+    dashboardModal.style.display = 'none';
+}
+
+// Load dashboard data on startup
+async function loadDashboard() {
+    try {
+        await fetch(`${API_BASE_URL}/dashboard`);
+    } catch (error) {
+        console.log('Dashboard data not available yet');
+    }
+}
+
+// Show settings (placeholder)
+function showSettings() {
+    addMessage('⚙️ Settings panel coming soon! This will include voice settings, theme options, and notification preferences.', 'assistant');
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    if (event.target === dashboardModal) {
+        closeDashboard();
+    }
+}
